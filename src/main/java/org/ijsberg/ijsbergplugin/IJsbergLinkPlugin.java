@@ -37,6 +37,8 @@ public class IJsbergLinkPlugin extends Builder {
     private final String name;
 
     // Fields in config.jelly must match the parameter names in the "DataBoundConstructor"
+
+	//TODO pass parameters here
     @DataBoundConstructor
     public IJsbergLinkPlugin(String name) {
         this.name = name;
