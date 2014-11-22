@@ -1,16 +1,17 @@
 package org.ijsberg.ijsbergplugin;
-import hudson.Launcher;
+
 import hudson.Extension;
-import hudson.util.FormValidation;
+import hudson.Launcher;
 import hudson.model.AbstractBuild;
-import hudson.model.BuildListener;
 import hudson.model.AbstractProject;
-import hudson.tasks.Builder;
+import hudson.model.BuildListener;
 import hudson.tasks.BuildStepDescriptor;
+import hudson.tasks.Builder;
+import hudson.util.FormValidation;
 import net.sf.json.JSONObject;
 import org.kohsuke.stapler.DataBoundConstructor;
-import org.kohsuke.stapler.StaplerRequest;
 import org.kohsuke.stapler.QueryParameter;
+import org.kohsuke.stapler.StaplerRequest;
 
 import javax.servlet.ServletException;
 import java.io.IOException;
@@ -38,7 +39,7 @@ public class IJsbergLinkPlugin extends Builder {
 
     // Fields in config.jelly must match the parameter names in the "DataBoundConstructor"
 
-	//TODO pass parameters here
+	//TODO pass parameters here -> customer name, project name, monitor repository dir
     @DataBoundConstructor
     public IJsbergLinkPlugin(String name) {
         this.name = name;
@@ -61,6 +62,11 @@ public class IJsbergLinkPlugin extends Builder {
             listener.getLogger().println("Bonjour, "+name+"!");
         else
             listener.getLogger().println("Hello, "+name+"!");
+
+
+
+		listener.getLogger().println(build.getRootDir());
+
         return true;
     }
 
@@ -129,7 +135,7 @@ public class IJsbergLinkPlugin extends Builder {
          * This human readable name is used in the configuration screen.
          */
         public String getDisplayName() {
-            return "Say hello world";
+            return "Links to IJsberg static source code analysis";
         }
 
         @Override
