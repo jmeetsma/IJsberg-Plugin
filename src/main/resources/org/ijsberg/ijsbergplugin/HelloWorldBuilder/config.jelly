@@ -6,10 +6,15 @@
   -->
 
   <!--
-    Creates a text field that shows the value of the "name" property.
-    When submitted, it will be passed to the corresponding constructor parameter.
+  plugin constructor parameters
   -->
-  <f:entry title="Name" field="name">
+  <f:entry title="Customer ID" field="customerId" description="Name of customer used in snapshot repository">
+    <f:textbox />
+  </f:entry>
+  <f:entry title="Project ID" field="projectId" description="Name of project used in snapshot repository">
+    <f:textbox />
+  </f:entry>
+  <f:entry title="Monitor upload directory" field="monitorUploadDirectory" description="Path to upload directory of monitor server">
     <f:textbox />
   </f:entry>
 </j:jelly>

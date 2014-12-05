@@ -33,16 +33,6 @@
             <artifactId>iglu-util</artifactId>
             <version>0.9.3-SNAPSHOT</version>
         </dependency>
-        <dependency>
-            <groupId>org.ijsberg</groupId>
-            <artifactId>iglu-http</artifactId>
-            <version>0.9.3-SNAPSHOT</version>
-        </dependency>
-        <dependency>
-            <groupId>org.ijsberg</groupId>
-            <artifactId>code-analysis</artifactId>
-            <version>1.0</version>
-        </dependency>
     </dependencies>
 
   <licenses>
