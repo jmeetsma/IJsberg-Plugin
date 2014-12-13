@@ -8,10 +8,7 @@
   <!--
   plugin constructor parameters
   -->
-  <f:entry title="Customer ID" field="customerId" description="Name of customer used in snapshot repository">
-    <f:textbox />
-  </f:entry>
-  <f:entry title="Project ID" field="projectId" description="Name of project used in snapshot repository">
+  <f:entry title="Project analysis properties" field="analysisProperties" description="File name of analysis properties for current project, located in Monitor Server configuration">
     <f:textbox />
   </f:entry>
   <f:entry title="Monitor upload directory" field="monitorUploadDirectory" description="Path to upload directory of monitor server">

@@ -10,17 +10,23 @@ import hudson.tasks.BuildStepDescriptor;
 import hudson.tasks.Builder;
 import hudson.util.FormValidation;
 import net.sf.json.JSONObject;
+import org.ijsberg.iglu.util.collection.ArraySupport;
+import org.ijsberg.iglu.util.io.FSFileCollection;
+import org.ijsberg.iglu.util.io.FileFilterRuleSet;
 import org.ijsberg.iglu.util.io.FileSupport;
+import org.ijsberg.iglu.util.io.ZipFileStreamProvider;
+import org.ijsberg.iglu.util.misc.StringSupport;
+import org.ijsberg.iglu.util.properties.PropertiesSupport;
 import org.kohsuke.stapler.DataBoundConstructor;
 import org.kohsuke.stapler.QueryParameter;
 import org.kohsuke.stapler.StaplerRequest;
 
 import javax.servlet.ServletException;
-import java.io.File;
-import java.io.FileOutputStream;
-import java.io.IOException;
+import java.io.*;
 import java.text.SimpleDateFormat;
 import java.util.Date;
+import java.util.List;
+import java.util.Properties;
 
 /**
  * Sample {@link Builder}.
@@ -45,15 +51,24 @@ public class IJsbergLinkPlugin extends Builder {
 	private final String projectId;
 	private final String monitorUploadDirectory;
 
+
+	private final String analysisProperties;
+	private final Properties properties = new Properties();
+
 	public static final String SNAPSHOT_TIMESTAMP_FORMAT = "yyyyMMdd_HH_mm";
 
 	// Fields in config.jelly must match the parameter names in the "DataBoundConstructor"
 
 	@DataBoundConstructor
-    public IJsbergLinkPlugin(String customerId, String projectId, String monitorUploadDirectory) {
-        this.customerId = customerId;
-		this.projectId = projectId;
+    public IJsbergLinkPlugin(String analysisProperties, String monitorUploadDirectory) throws IOException {
+
 		this.monitorUploadDirectory = monitorUploadDirectory;
+        this.analysisProperties = analysisProperties;
+
+		properties.load(new FileInputStream(new File(analysisProperties)));
+
+		this.projectId = properties.getProperty("projectName");
+		this.customerId = properties.getProperty("customerName");
     }
 
     /**
@@ -76,6 +91,8 @@ public class IJsbergLinkPlugin extends Builder {
         // This is where you 'build' the project.
         // This also shows how you can consult the global configuration of the builder
 
+
+
 		String uploadDir = monitorUploadDirectory;
 
         if (getDescriptor().getAlternativeUploadDirectory() != null && !"".equals(getDescriptor().getAlternativeUploadDirectory())) {
@@ -92,27 +109,69 @@ public class IJsbergLinkPlugin extends Builder {
 			return false;
 		}
 		FilePath path = build.getWorkspace();
-		listener.getLogger().println("zipping sources to " + uploadDirectory.getAbsolutePath());
+		String workSpacePath = build.getWorkspace().getRemote();
+		listener.getLogger().println("zipping sources from " + workSpacePath + " to " + uploadDirectory.getAbsolutePath());
 
-		String destfileName = uploadDir + "/" + getSnapshotZipfileName(customerId, projectId, new Date()) + ".zip";
+		String destfileName = uploadDir + "/" + getSnapshotZipfileName(customerId, projectId, new Date());
 		File file = new File(destfileName);
 		try {
 			FileOutputStream tmpFileOutput = new FileOutputStream(file);
-			path.zip(tmpFileOutput);
+
+
+			ZipFileStreamProvider zipFileStreamProvider = new ZipFileStreamProvider(destfileName);
+
+			List<String> languages = StringSupport.split(properties.getProperty("languages"));
+
+			for(String language : languages) {
+				Properties languageProperties = PropertiesSupport.getSubsection(properties, language);
+				FileFilterRuleSet fileFilterRuleSet = configureFileFilter(PropertiesSupport.getSubsection(languageProperties, "fileFilter"));
+				FSFileCollection fsFileCollection = new FSFileCollection(workSpacePath, fileFilterRuleSet);
+				for(String fileName : fsFileCollection.getFileNames()) {
+					OutputStream outputStream = zipFileStreamProvider.createOutputStream(fileName);
+					File fileInCollection = fsFileCollection.getActualFileByName(fileName);
+					FileSupport.copyFileResource(fileInCollection.getAbsolutePath(), outputStream);
+					zipFileStreamProvider.closeCurrentStream();
+				}
+			}
+
+			zipFileStreamProvider.close();
+//			path.zip(tmpFileOutput);
 			FileSupport.createFile(destfileName + ".DONE");
 		} catch (IOException e) {
 			listener.getLogger().println("exception encountered during zip process with message: " + e.getMessage());
 			e.printStackTrace();
 			return false;
 		}
-		catch (InterruptedException e) {
+/*		catch (InterruptedException e) {
 			listener.getLogger().println("exception encountered during zip process with message: " + e.getMessage());
 			e.printStackTrace();
 			return false;
-		}
+		}  */
 		listener.getLogger().println("DONE ... created snapshot " + destfileName);
         return true;
     }
+
+	public static FileFilterRuleSet configureFileFilter(Properties fileFilterProperties) {
+
+		FileFilterRuleSet retval = new FileFilterRuleSet().setIncludeFilesWithNameMask("*.*");
+
+		retval.setIncludeFilesWithNameMask(ArraySupport.format(getSettingArray(fileFilterProperties, "includeFilesWithName"), "|"));
+		retval.setExcludeFilesWithNameMask(ArraySupport.format(getSettingArray(fileFilterProperties, "excludeFilesWithName"), "|"));
+		retval.setIncludeFilesContainingText(getSettingArray(fileFilterProperties, "includeFilesContainingText"));
+		retval.setExcludeFilesContainingText(getSettingArray(fileFilterProperties, "excludeFilesContainingText"));
+
+		return retval.clone();
+	}
+
+
+	public static String[] getSettingArray(Properties properties, String key) {
+		String value = properties.getProperty(key);
+		if(value == null || value.isEmpty()) {
+			return new String[]{};
+		}
+		return StringSupport.split(value).toArray(new String[]{});
+	}
+
 
 
 	public static String getSnapshotZipfileName(String customerId, String projectId, Date snapshotTimestamp) {
@@ -168,21 +227,47 @@ public class IJsbergLinkPlugin extends Builder {
          *      prevent the form from being saved. It just means that a message
          *      will be displayed to the user. 
          */
-        public FormValidation doCheckAlternativeUploadDirectory(@QueryParameter String value)
-                throws IOException, ServletException {
-            if (value.length() == 0)
-                return FormValidation.error("Please provide upload directory");
+		public FormValidation doCheckAnalysisProperties(@QueryParameter String value)
+				throws IOException, ServletException {
+			if (value.length() == 0)
+				return FormValidation.error("Please provide a path to the analysis properties file");
 			File file = new File(value);
 			if(!file.exists()) {
-				return FormValidation.error("Upload directory " + value + " does not exist");
+				return FormValidation.error("File " + value + " does not exist or is not accessible");
+			}
+			if(file.isDirectory()) {
+				return FormValidation.error(value + " is a directory");
+			}
+			Properties properties = new Properties();
+			properties.load(new FileInputStream(new File(value)));
+
+			if(!properties.containsKey("customerName")) {
+				return FormValidation.error("Properties file " + value + " does not contain property customerName");
+			}
+			if(!properties.containsKey("projectName")) {
+				return FormValidation.error("Properties file " + value + " does not contain property projectName");
+			}
+
+			return FormValidation.ok();
+		}
+
+
+		public FormValidation doCheckMonitorUploadDirectory(@QueryParameter String value)
+				throws IOException, ServletException {
+			if (value.length() == 0)
+				return FormValidation.error("Please provide a path of the upload directory of the Monitor Server");
+			File file = new File(value);
+			if(!file.exists()) {
+				return FormValidation.error("File " + value + " does not exist or is not accessible");
 			}
 			if(!file.isDirectory()) {
 				return FormValidation.error(value + " is not a directory");
 			}
-            return FormValidation.ok();
-        }
+			return FormValidation.ok();
+		}
 
-        public boolean isApplicable(Class<? extends AbstractProject> aClass) {
+
+		public boolean isApplicable(Class<? extends AbstractProject> aClass) {
             // Indicates that this builder can be used with all kinds of project types 
             return true;
         }
@@ -191,7 +276,7 @@ public class IJsbergLinkPlugin extends Builder {
          * This human readable name is used in the configuration screen.
          */
         public String getDisplayName() {
-            return "Links to IJsberg static source code analysis";
+            return "Link to IJsberg Monitor Server";
         }
 
         @Override
