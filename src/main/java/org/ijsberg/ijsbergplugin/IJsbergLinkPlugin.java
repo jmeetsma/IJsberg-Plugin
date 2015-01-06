@@ -115,7 +115,7 @@ public class IJsbergLinkPlugin extends Builder {
 		String destfileName = uploadDir + "/" + getSnapshotZipfileName(customerId, projectId, new Date());
 		File file = new File(destfileName);
 		try {
-			FileOutputStream tmpFileOutput = new FileOutputStream(file);
+			//FileOutputStream tmpFileOutput = new FileOutputStream(file);
 
 
 			ZipFileStreamProvider zipFileStreamProvider = new ZipFileStreamProvider(destfileName);
