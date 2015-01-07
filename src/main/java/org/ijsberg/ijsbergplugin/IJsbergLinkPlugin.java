@@ -65,6 +65,7 @@ public class IJsbergLinkPlugin extends Builder {
 		this.monitorUploadDirectory = monitorUploadDirectory;
         this.analysisProperties = analysisProperties;
 
+		//TODO load properties on-the-fly
 		properties.load(new FileInputStream(new File(analysisProperties)));
 
 		this.projectId = properties.getProperty("projectName");
@@ -125,12 +126,11 @@ public class IJsbergLinkPlugin extends Builder {
 			for(String language : languages) {
 				Properties languageProperties = PropertiesSupport.getSubsection(properties, language);
 				FileFilterRuleSet fileFilterRuleSet = configureFileFilter(PropertiesSupport.getSubsection(languageProperties, "fileFilter"));
-				FSFileCollection fsFileCollection = new FSFileCollection(workSpacePath, fileFilterRuleSet);
-				for(String fileName : fsFileCollection.getFileNames()) {
-					OutputStream outputStream = zipFileStreamProvider.createOutputStream(fileName);
-					File fileInCollection = fsFileCollection.getActualFileByName(fileName);
-					FileSupport.copyFileResource(fileInCollection.getAbsolutePath(), outputStream);
-					zipFileStreamProvider.closeCurrentStream();
+				copyFilesToZip(workSpacePath, zipFileStreamProvider, fileFilterRuleSet);
+				Properties testFileFilterProperties = PropertiesSupport.getSubsection(languageProperties, "testFileFilter");
+				if(testFileFilterProperties != null && !testFileFilterProperties.isEmpty()){
+					FileFilterRuleSet testFileFilterRuleSet = configureFileFilter(testFileFilterProperties);
+					copyFilesToZip(workSpacePath, zipFileStreamProvider, testFileFilterRuleSet);
 				}
 			}
 
@@ -150,6 +150,16 @@ public class IJsbergLinkPlugin extends Builder {
 		listener.getLogger().println("DONE ... created snapshot " + destfileName);
         return true;
     }
+
+	private void copyFilesToZip(String workSpacePath, ZipFileStreamProvider zipFileStreamProvider, FileFilterRuleSet fileFilterRuleSet) throws IOException {
+		FSFileCollection fsFileCollection = new FSFileCollection(workSpacePath, fileFilterRuleSet);
+		for(String fileName : fsFileCollection.getFileNames()) {
+			OutputStream outputStream = zipFileStreamProvider.createOutputStream(fileName);
+			File fileInCollection = fsFileCollection.getActualFileByName(fileName);
+			FileSupport.copyFileResource(fileInCollection.getAbsolutePath(), outputStream);
+			zipFileStreamProvider.closeCurrentStream();
+		}
+	}
 
 	public static FileFilterRuleSet configureFileFilter(Properties fileFilterProperties) {
 
