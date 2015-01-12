@@ -10,6 +10,8 @@ import hudson.tasks.BuildStepDescriptor;
 import hudson.tasks.Builder;
 import hudson.util.FormValidation;
 import net.sf.json.JSONObject;
+import org.ijsberg.iglu.logging.Level;
+import org.ijsberg.iglu.logging.LogEntry;
 import org.ijsberg.iglu.util.collection.ArraySupport;
 import org.ijsberg.iglu.util.io.FSFileCollection;
 import org.ijsberg.iglu.util.io.FileFilterRuleSet;
@@ -29,7 +31,7 @@ import java.util.List;
 import java.util.Properties;
 
 /**
- * Sample {@link Builder}.
+ * IJsbergLinkPlugin {@link Builder}.
  *
  * <p>
  * When the user configures the project and enables this builder,
@@ -47,8 +49,8 @@ import java.util.Properties;
  */
 public class IJsbergLinkPlugin extends Builder {
 
-    private final String customerId;
-	private final String projectId;
+    private String customerId;
+	private String projectId;
 	private final String monitorUploadDirectory;
 
 
@@ -64,15 +66,20 @@ public class IJsbergLinkPlugin extends Builder {
 
 		this.monitorUploadDirectory = monitorUploadDirectory;
         this.analysisProperties = analysisProperties;
-
-		//TODO load properties on-the-fly
-		properties.load(new FileInputStream(new File(analysisProperties)));
-
-		this.projectId = properties.getProperty("projectName");
-		this.customerId = properties.getProperty("customerName");
+		loadProperties(analysisProperties);
     }
 
-    /**
+	private void loadProperties(String analysisProperties) throws IOException {
+		InputStream inputStream = new FileInputStream(new File(analysisProperties));
+		properties.load(inputStream);
+		this.projectId = properties.getProperty("projectName");
+		this.customerId = properties.getProperty("customerName");
+		System.out.println(new LogEntry(Level.VERBOSE, "loaded properties for customer "
+				+ this.customerId + ", project " + this.projectId));
+		inputStream.close();
+	}
+
+	/**
      * We'll use this from the <tt>config.jelly</tt>.
      */
 	public String getCustomerId() {
@@ -87,19 +94,23 @@ public class IJsbergLinkPlugin extends Builder {
 		return monitorUploadDirectory;
 	}
 
+	public String getAnalysisProperties() {
+		return analysisProperties;
+	}
+
 	@Override
     public boolean perform(AbstractBuild build, Launcher launcher, BuildListener listener) {
         // This is where you 'build' the project.
         // This also shows how you can consult the global configuration of the builder
-
-
-
-		String uploadDir = monitorUploadDirectory;
-
-        if (getDescriptor().getAlternativeUploadDirectory() != null && !"".equals(getDescriptor().getAlternativeUploadDirectory())) {
-			uploadDir = getDescriptor().getAlternativeUploadDirectory();
+		// reload properties on-the-fly
+		try {
+			loadProperties(analysisProperties);
+		} catch (IOException e) {
+			listener.getLogger().println(new LogEntry("ERROR: unable to reload properties " + analysisProperties, e));
+			return false;
 		}
-		listener.getLogger().println("got request to analyze project " + projectId + " for " + customerId);
+
+		String uploadDir = getCurrentUploadDir(listener);
 		File uploadDirectory = new File(uploadDir);
 		if(!uploadDirectory.exists()) {
 			listener.getLogger().println("ERROR: upload directory " + uploadDirectory.getAbsolutePath() + " does not exist or is not accessible");
@@ -109,47 +120,49 @@ public class IJsbergLinkPlugin extends Builder {
 			listener.getLogger().println("ERROR: " + uploadDirectory.getAbsolutePath() + " is not a directory");
 			return false;
 		}
-		FilePath path = build.getWorkspace();
 		String workSpacePath = build.getWorkspace().getRemote();
 		listener.getLogger().println("zipping sources from " + workSpacePath + " to " + uploadDirectory.getAbsolutePath());
 
 		String destfileName = uploadDir + "/" + getSnapshotZipfileName(customerId, projectId, new Date());
-		File file = new File(destfileName);
 		try {
-			//FileOutputStream tmpFileOutput = new FileOutputStream(file);
-
-
-			ZipFileStreamProvider zipFileStreamProvider = new ZipFileStreamProvider(destfileName);
-
-			List<String> languages = StringSupport.split(properties.getProperty("languages"));
-
-			for(String language : languages) {
-				Properties languageProperties = PropertiesSupport.getSubsection(properties, language);
-				FileFilterRuleSet fileFilterRuleSet = configureFileFilter(PropertiesSupport.getSubsection(languageProperties, "fileFilter"));
-				copyFilesToZip(workSpacePath, zipFileStreamProvider, fileFilterRuleSet);
-				Properties testFileFilterProperties = PropertiesSupport.getSubsection(languageProperties, "testFileFilter");
-				if(testFileFilterProperties != null && !testFileFilterProperties.isEmpty()){
-					FileFilterRuleSet testFileFilterRuleSet = configureFileFilter(testFileFilterProperties);
-					copyFilesToZip(workSpacePath, zipFileStreamProvider, testFileFilterRuleSet);
-				}
-			}
-
-			zipFileStreamProvider.close();
-//			path.zip(tmpFileOutput);
-			FileSupport.createFile(destfileName + ".DONE");
+			zipSources(workSpacePath, destfileName, listener);
 		} catch (IOException e) {
 			listener.getLogger().println("exception encountered during zip process with message: " + e.getMessage());
 			e.printStackTrace();
 			return false;
 		}
-/*		catch (InterruptedException e) {
-			listener.getLogger().println("exception encountered during zip process with message: " + e.getMessage());
-			e.printStackTrace();
-			return false;
-		}  */
 		listener.getLogger().println("DONE ... created snapshot " + destfileName);
         return true;
     }
+
+	private String getCurrentUploadDir(BuildListener listener) {
+		String uploadDir = monitorUploadDirectory;
+		if (getDescriptor().getAlternativeUploadDirectory() != null && !"".equals(getDescriptor().getAlternativeUploadDirectory())) {
+			uploadDir = getDescriptor().getAlternativeUploadDirectory();
+		}
+		listener.getLogger().println("got request to analyze project " + projectId + " for " + customerId);
+		return uploadDir;
+	}
+
+	private void zipSources(String workSpacePath, String destfileName, BuildListener listener) throws IOException {
+		ZipFileStreamProvider zipFileStreamProvider = new ZipFileStreamProvider(destfileName);
+		List<String> languages = StringSupport.split(properties.getProperty("languages"));
+
+		for(String language : languages) {
+			listener.getLogger().println("zipping sources for language " + language);
+			Properties languageProperties = PropertiesSupport.getSubsection(properties, language);
+			FileFilterRuleSet fileFilterRuleSet = configureFileFilter(PropertiesSupport.getSubsection(languageProperties, "fileFilter"));
+			copyFilesToZip(workSpacePath, zipFileStreamProvider, fileFilterRuleSet);
+			Properties testFileFilterProperties = PropertiesSupport.getSubsection(languageProperties, "testFileFilter");
+			if(testFileFilterProperties != null && !testFileFilterProperties.isEmpty()){
+				FileFilterRuleSet testFileFilterRuleSet = configureFileFilter(testFileFilterProperties);
+				listener.getLogger().println("zipping TEST sources for language " + language);
+				copyFilesToZip(workSpacePath, zipFileStreamProvider, testFileFilterRuleSet);
+			}
+		}
+		zipFileStreamProvider.close();
+		FileSupport.createFile(destfileName + ".DONE");
+	}
 
 	private void copyFilesToZip(String workSpacePath, ZipFileStreamProvider zipFileStreamProvider, FileFilterRuleSet fileFilterRuleSet) throws IOException {
 		FSFileCollection fsFileCollection = new FSFileCollection(workSpacePath, fileFilterRuleSet);
@@ -306,17 +319,5 @@ public class IJsbergLinkPlugin extends Builder {
 			return alterantiveUploadDirectory;
         }
     }
-
-
-	public static void main(String[] args) throws Exception {
-		FilePath path = new FilePath(new File("C:/util/keys"));
-
-
-		String tempfileName = "C:/tmp//tmp_" + System.nanoTime() + ".zip";
-		File tmpFile = new File(tempfileName);
-
-		path.zip(new FilePath(tmpFile));
-
-	}
 }
 
