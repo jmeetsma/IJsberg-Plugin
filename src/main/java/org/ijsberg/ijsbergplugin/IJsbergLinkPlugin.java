@@ -164,7 +164,7 @@ public class IJsbergLinkPlugin extends Builder {
 		FileSupport.createFile(destfileName + ".DONE");
 	}
 
-	private void copyFilesToZip(String workSpacePath, ZipFileStreamProvider zipFileStreamProvider, FileFilterRuleSet fileFilterRuleSet) throws IOException {
+	private static void copyFilesToZip(String workSpacePath, ZipFileStreamProvider zipFileStreamProvider, FileFilterRuleSet fileFilterRuleSet) throws IOException {
 		FSFileCollection fsFileCollection = new FSFileCollection(workSpacePath, fileFilterRuleSet);
 		for(String fileName : fsFileCollection.getFileNames()) {
 			OutputStream outputStream = zipFileStreamProvider.createOutputStream(fileName);
@@ -319,5 +319,7 @@ public class IJsbergLinkPlugin extends Builder {
 			return alterantiveUploadDirectory;
         }
     }
+
+
 }
 
